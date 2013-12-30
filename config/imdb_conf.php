@@ -37,7 +37,7 @@
 $config['local_info'] = FALSE;
 $config['include_slug'] = TRUE;
 $config['slug_delimiter'] = '-';
-$config['actor_limit'] = '5';
+$config['actor_limit'] = '15';
 
 /*
 | -------------------------------------------------------------------------
@@ -59,7 +59,7 @@ $config['actor_limit'] = '5';
 | * title_slug	* writers 		* poster - small & medium
 | * year 		    * mpaa_rating	* trailer
 */
-$config['light_mode'] = TRUE;
+$config['light_mode'] = FALSE;
 
 /*
 | -------------------------------------------------------------------------
@@ -77,7 +77,7 @@ $config['light_mode'] = TRUE;
 | * IMDB Video's			    - Will only get the url to the film page, not the actual film it's self
 | * Youtube Trailer 		  - This will automatically get one youtube trailer with the config below.
 */
-$config['get_extra_info'] = FALSE;
+$config['get_extra_info'] = TRUE;
 
 /*
 | -------------------------------------------------------------------------
@@ -89,4 +89,4 @@ $config['get_extra_info'] = FALSE;
 | Add options as the following: parameter=state
 | 
 */
-$config['trailer_options'] = array('autoplay=0', 'showinfo=0', 'showsearch=0', 'version=3', 'modestbranding=1', 'fs=1', 'iv_load_policy=3');
+$config['trailer_options'] = array();//'autoplay=0', 'showinfo=0', 'showsearch=0', 'version=3', 'modestbranding=1', 'fs=1', 'iv_load_policy=3');

@@ -33,6 +33,8 @@ if(isset($movie)){
 
 <img src="<?=$movie['poster']?>" />
 
+<p><a href="<?=BASE.AMP.'C=addons_modules'.AMP.'M=show_module_cp'.AMP.'module=entry_poster_imdb'.AMP.'method=post_entry'.AMP.'imdb_id='.$movie['title_id']?>"><?=lang('post_entry')?></a></p>
+
 <?php        
         
     }

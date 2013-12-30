@@ -212,7 +212,7 @@ class Imdb
     private function scanMediaImages($html)
     {
         $pics = array();
-        foreach($this->match_all('/src="(.*?)"/ms', $this->match('/<div class="thumb_list" style="font-size: 0px;">(.*?)<\/div>/ms', $html, 1), 1) as $i) {
+        foreach($this->match_all('/src="(.*?)"/ms', $this->match('/<div class="media_index_thumb_list" id="media_index_thumbnail_grid">(.*?)<\/div>/ms', $html, 1), 1) as $i) {
             array_push($pics, preg_replace('/_V1\..*?.jpg/ms', "_V1._SY0.jpg", $i));
         }
         return array_filter($pics);

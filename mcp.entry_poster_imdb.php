@@ -25,6 +25,13 @@ class Entry_poster_imdb_mcp {
     var $version = ENTRY_POSTER_IMDB_ADDON_VERSION;
     
     var $settings = array();
+    
+    var $mimes = array(
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif'
+        );
 
     function __construct() { 
         // Make a local reference to the ExpressionEngine super object 
@@ -40,12 +47,6 @@ class Entry_poster_imdb_mcp {
     	{
     		show_error($this->EE->lang->line('unauthorized_access'));
     	}
-
-        $movie = $this->EE->imdb->getMovieInfo('tt'.$this->EE->input->get_post('imdb_id')); 
-        if ($movie['error']!='')
-        {
-            show_error($movie['error']);
-        }
         
         $settings_q = $this->EE->db->select('settings')
                             ->from('modules')
@@ -62,6 +63,12 @@ class Entry_poster_imdb_mcp {
         {
             $channel_id = $settings['channel_to_post'];
         }
+
+        $movie = $this->EE->imdb->getMovieInfo($this->EE->input->get_post('imdb_id')); 
+        if (isset($movie['error']) && $movie['error']!='')
+        {
+            show_error($movie['error']);
+        }
         
         $this->EE->load->library('api'); 
         $this->EE->api->instantiate('channel_entries'); 
@@ -69,37 +76,46 @@ class Entry_poster_imdb_mcp {
         
         $data = array( 
                 'title' => $movie['title'], 
-                'entry_date' => $this->EE->localize->now,
+                'entry_date' => ($settings['entry_date']=='release_date')?strtotime($movie['release_date']):$this->EE->localize->now,
                 'author_id' => $this->EE->session->userdata('member_id'),
                 'channel_id'=> $channel_id,
                 'status'	=> 'open'
             ); 
             
         unset($settings['channel_to_post']);
+        unset($settings['entry_date']);
         
-        $tags = array('genres', 'directors', 'writers');
+        $tags = array('genres', 'directors', 'writers', 'stars');
         $dates = array('release_date');
-        $images = array('poster', 'poster_large');
+        $images = array('poster', 'poster_large', 'media_images');
         $ci_fields = array();
         foreach ($settings as $key=>$val)
         {
-            if (in_array($key, $dates))
+            if ($val!='')
             {
-                
+                if (in_array($key, $dates))
+                {
+                    $data['field_id_'.$val] = strtotime($movie[$key]);
+                }
+                elseif (in_array($key, $images))
+                {
+                    $data['field_id_'.$val] = 'ChannelImages';
+                }
+                elseif (in_array($key, $tags))
+                {
+                    $data['field_id_'.$val] = '';
+                    foreach ($movie[$key] as $item)
+                    {
+                        $data['field_id_'.$val] .= $item."\n";
+                    }
+                    $movie[$key] = trim($data['field_id_'.$val]);
+                }
+                else
+                {
+                    $data['field_id_'.$val] = $movie[$key];
+                }
+                $data['field_ft_'.$val] = 'none';
             }
-            elseif (in_array($key, $images))
-            {
-                $data['field_id_'.$val] = 'ChannelImages';
-            }
-            elseif (in_array($key, $tags))
-            {
-                $data['field_id_'.$val] = '';
-            }
-            else
-            {
-                $data['field_id_'.$val] = $movie[$key];
-            }
-            $data['field_ft_'.$val] = 'none';
         }
         
         $this->EE->api_channel_fields->setup_entry_settings($channel_id, $data); 
@@ -115,87 +131,129 @@ class Entry_poster_imdb_mcp {
                     ->get();
         $entry_id = $entry_id_q->row('entry_id');
         
-        $mimes = array(
-            'jpg' => 'image/jpeg',
-            'jpeg' => 'image/jpeg',
-            'png' => 'image/png',
-            'gif' => 'image/gif'
-        );
+        foreach ($tags as $fieldtagname)
+        {
+            if ($settings[$fieldtagname]!='')
+            {
+                $field_settings_q = $this->EE->db->select('field_settings')
+                                ->from('channel_fields')
+                                ->where('field_id', $settings[$fieldtagname])
+                                ->get();
+                $field_settings = unserialize(base64_decode($field_settings_q->row('field_settings')));
+            
+                if (!isset($this->tag_ob) || !is_object($this->tag_ob))
+        		{
+        			require_once PATH_THIRD . 'tag/mod.tag.php';
+        		}
+                
+                $this->tag_ob = new Tag();
+                
+        		$this->tag_ob->site_id			= $this->EE->config->item('site_id');
+        		$this->tag_ob->entry_id			= $entry_id;
+        		$this->tag_ob->str				= $movie[$fieldtagname];
+        		$this->tag_ob->from_ft			= TRUE;
+        		$this->tag_ob->field_id			= $settings[$fieldtagname];
+        		$this->tag_ob->tag_group_id		= $field_settings['tag_group'];
+        		$this->tag_ob->type				= 'channel';
+        		//everything is stored hidden as newline separation
+        		$this->tag_ob->separator_override = 'newline';
+        
+        		$this->tag_ob->parse();
+            }
+        }
 		
-        if ($movie['poster']!='')
+        
+        
+        if (isset($settings['poster']) && $settings['poster']!='' && $movie['poster']!='')
         {		
-    		$new_filename = strtolower($row['filename'].$row['extension']);
-            //move images
-            @mkdir($new_directory.'/'.$entry_id, 0777);
-            @copy($this->EE->functions->remove_double_slashes('/var/www/vhosts/kazantip.com/httpdocs/images/pics/beauties/'.$row['filename'].$row['extension']), $new_directory.'/'.$entry_id.'/'.$new_filename);
-            //prepare data
-            $ext = substr($new_filename, strrpos($new_filename, '.')+1);
-            
-            $insert = array(
-                'entry_id' => $entry_id,
-                'site_id' => $this->EE->config->item('site_id'),
-                'channel_id' => $channel_id,
-                'member_id' => $this->EE->session->userdata('member_id'),
-                'field_id' => $settings['poster'],
-                'filename' => $filename,
-                'extension' => $ext,
-                'mime' => $mimes["$ext"],
-                'upload_date' => $data['entry_date'],
-                'title'	=> $data['title']
-            );
-            
-            $this->EE->db->insert('channel_images', $insert);
+            $this->_insert_images($channel_id, $entry_id, $settings['poster'], $movie['poster'], $data); 
         }
+        if (isset($settings['poster_large']) && $settings['poster_large']!='' && $movie['poster_large']!='')
+        {		
+            $this->_insert_images($channel_id, $entry_id, $settings['poster_large'], $movie['poster_large'], $data); 
+        }
+        if (isset($settings['media_images']) && $settings['media_images']!='' && $movie['media_images']!='')
+        {		
+            foreach ($movie['media_images'] as $media_image)
+            {
+                $this->_insert_images($channel_id, $entry_id, $settings['media_images'], $media_image, $data);
+            } 
+        }
+        
+        $this->EE->session->set_flashdata(
+    		'message_success',
+    	 	$this->EE->lang->line('entry_created')
+    	);
+        
+        $this->EE->functions->redirect(BASE.AMP.'C=content_publish'.AMP.'M=entry_form'.AMP.'channel_id='.$channel_id.AMP.'entry_id='.$entry_id);
 
- 
-        foreach ($members as $key => $member_id)
-		{
-            $this->EE->db->select('entry_id')
-                    ->from('channel_titles')
-                    ->where('channel_id', $this->settings['channel'])
-                    ->where('author_id', $member_id);
-            $q = $this->EE->db->get();
-            if ($q->num_rows()>0)
-            {
-                continue;
-            }
-            
-            $this->EE->db->select('exp_members.screen_name, exp_members.bio, exp_members.email, exp_member_data.*')
-                        ->from('exp_members')
-                        ->join('exp_member_data', 'exp_members.member_id=exp_member_data.member_id', 'left')
-                        ->where('exp_members.member_id', $member_id);
-            $q = $this->EE->db->get();
-            
-            
-            /*
-            foreach ($this->settings as $key=>$setting)
-            {
-                if ($setting!='')
-                {
-                    $m_field_id = array_search($key, $member_fields);
-                    if ($m_field_id!==false)
-                    {
-                        $data['field_id_'.$setting] = $q->row('m_field_id_'.$m_field_id);
-                        $data['field_ft_'.$setting] = 'none';
-                    }
-                    if (in_array($key, array('bio', 'email')))
-                    {
-                        $data['field_id_'.$setting] = $q->row($key);
-                        $data['field_ft_'.$setting] = 'none';
-                    }
-                }
-            }
-*/
-            
-            $result = $this->EE->api_channel_entries->submit_new_entry($this->settings['channel'], $data); 
-            
-        }
     }
+    
+    
+    
+    function _insert_images($channel_id, $entry_id, $field_id, $url, $parent_data)
+    {
+        $this->EE->load->library('filemanager');
+        
+        
+        $field_settings_q = $this->EE->db->select('field_settings')
+                            ->from('channel_fields')
+                            ->where('field_id', $field_id)
+                            ->get();
+        $field_settings = unserialize(base64_decode($field_settings_q->row('field_settings')));
+        
+        $dir_id = $field_settings['channel_images']['locations']['local']['location'];
+        
+        $dir = $this->EE->filemanager->fetch_upload_dir_prefs($dir_id);
+        
+        $filename_a = explode("/", $url);
+        $filename = end($filename_a);
+        //move images
+        @mkdir($dir['server_path'].$entry_id, 0777);
+        @copy($url, $dir['server_path'].$entry_id.'/'.$filename);
+        //prepare data
+        $ext = substr($filename, strrpos($filename, '.')+1);
+        
+        $insert = array(
+            'entry_id' => $entry_id,
+            'site_id' => $this->EE->config->item('site_id'),
+            'channel_id' => $channel_id,
+            'member_id' => $this->EE->session->userdata('member_id'),
+            'field_id' => $field_id,
+            'filename' => $filename,
+            'extension' => $ext,
+            'mime' => $this->mimes["$ext"],
+            'upload_date' => $parent_data['entry_date'],
+            'title'	=> $parent_data['title']
+        );
+        
+        $this->EE->db->insert('channel_images', $insert);
+        
+        if (class_exists('Channel_Images_API') != TRUE) include PATH_THIRD.'channel_images/api.channel_images.php';
+		$API = new Channel_Images_API();
+
+        $API->run_actions($filename, $field_id, $dir['server_path'].$entry_id.'/');
+
+    }
+    
+    
     
     
     function index()
     {
-        return $this->settings();
+        $settings_q = $this->EE->db->select('settings')
+                            ->from('modules')
+                            ->where('module_name','Entry_poster_imdb')
+                            ->limit(1)
+                            ->get(); 
+        if ($settings_q->row('settings')!='')
+        {
+            return $this->search();
+        }
+        else
+        {
+            return $this->settings();
+        }
     }
     
     
@@ -209,6 +267,7 @@ class Entry_poster_imdb_mcp {
         
         $settings = array(
             'channel_to_post'   => '',
+            'entry_date'   => 'release_date',
             'imdb_url'  => '',
             'year'      => '',
             'rating'    => '',
@@ -223,6 +282,7 @@ class Entry_poster_imdb_mcp {
             'storyline' => '',
             'poster'    => '',
             'poster_large'  => '',
+            'media_images' => '',
             'trailer'   => ''
         );
 
@@ -268,6 +328,8 @@ class Entry_poster_imdb_mcp {
             $channels[$channel['channel_id']] = $channel['channel_title'];
         }
         $vars['settings']['channel_to_post'] = form_dropdown('channel_to_post', $channels, $settings['channel_to_post']);
+        
+        $vars['settings']['entry_date'] = form_dropdown('entry_date', array('release_date'=>lang('release_date'), 'current_time'=>lang('current_time')), $settings['entry_date']);
 
     	return $this->EE->load->view('settings', $vars, TRUE);			
     }
@@ -293,6 +355,8 @@ class Entry_poster_imdb_mcp {
     		'message_success',
     	 	$this->EE->lang->line('preferences_updated')
     	);
+        
+        $this->EE->functions->redirect(BASE.AMP.'C=addons_modules'.AMP.'M=show_module_cp'.AMP.'module=entry_poster_imdb'.AMP.'method=settings');
     }
     
     

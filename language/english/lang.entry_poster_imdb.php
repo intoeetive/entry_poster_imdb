@@ -26,6 +26,9 @@ $lang = array(
 "account_type"=>
 "Account type",
 
+"post_entry" =>
+"Post entry",
+
 /* END */
 ''=>''
 );
